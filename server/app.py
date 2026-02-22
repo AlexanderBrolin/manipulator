@@ -24,6 +24,11 @@ def create_app(config_class="server.config.Config"):
     app.register_blueprint(auth_bp, url_prefix="/auth")
     init_admin(app)
 
+    @app.route("/")
+    def index():
+        from flask import redirect, url_for
+        return redirect(url_for("admin.index"))
+
     with app.app_context():
         db.create_all()
 

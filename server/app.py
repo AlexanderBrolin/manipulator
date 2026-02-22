@@ -18,16 +18,11 @@ def create_app(config_class="server.config.Config"):
 
     from server.api import api_bp
     from server.auth import auth_bp
-    from server.admin import init_admin
+    from server.views import views_bp
 
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(auth_bp, url_prefix="/auth")
-    init_admin(app)
-
-    @app.route("/")
-    def index():
-        from flask import redirect, url_for
-        return redirect(url_for("admin.index"))
+    app.register_blueprint(views_bp, url_prefix="")
 
     with app.app_context():
         db.create_all()

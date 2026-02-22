@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Servers — SSHADmin{% endblock %}
+{% block page_title %}Servers{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl border border-gray-200">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-900">All Servers ({{ servers|length }})</h2>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-gray-100">
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Hostname</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">IP</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">OS</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Groups</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Last Seen</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Registered</th>
+                    <th class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+                {% for server in servers %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ server.hostname }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500 font-mono">{{ server.ip_address }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">{{ server.os_info }}</td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {{ 'bg-green-100 text-green-700' if server.status == 'approved' else '' }}
+                            {{ 'bg-yellow-100 text-yellow-700' if server.status == 'pending' else '' }}
+                            {{ 'bg-red-100 text-red-700' if server.status == 'rejected' else '' }}">
+                            {{ server.status }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">
+                        {% for g in server.groups %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-xs text-gray-600 mr-1">{{ g.name }}</span>
+                        {% endfor %}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">
+                        {{ server.last_heartbeat.strftime('%Y-%m-%d %H:%M') if server.last_heartbeat else 'never' }}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">
+                        {{ server.registered_at.strftime('%Y-%m-%d %H:%M') if server.registered_at else '' }}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-2">
+                            {% if server.status == 'pending' %}
+                            <form method="POST" action="{{ url_for('views.server_action', id=server.id) }}" class="inline">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+                                    Approve
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('views.server_action', id=server.id) }}" class="inline">
+                                <input type="hidden" name="action" value="reject">
+                                <button type="submit" class="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
+                                    Reject
+                                </button>
+                            </form>
+                            {% elif server.status == 'approved' %}
+                            <form method="POST" action="{{ url_for('views.server_action', id=server.id) }}" class="inline">
+                                <input type="hidden" name="action" value="reject">
+                                <button type="submit" class="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
+                                    Revoke
+                                </button>
+                            </form>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('views.server_action', id=server.id) }}" class="inline">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+                                    Approve
+                                </button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('views.server_action', id=server.id) }}" class="inline"
+                                  onsubmit="return confirm('Delete server {{ server.hostname }}?')">
+                                <input type="hidden" name="action" value="delete">
+                                <button type="submit" class="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="px-6 py-12 text-center text-sm text-gray-500">
+                        No servers registered yet. Run bootstrap.sh on a server to register it.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

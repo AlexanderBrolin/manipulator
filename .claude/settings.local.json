@@ -4,7 +4,8 @@
       "Bash(iconv:*)",
       "Bash(find:*)",
       "Bash(pip install:*)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

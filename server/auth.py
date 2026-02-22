@@ -1,7 +1,7 @@
 from functools import wraps
 
 import click
-from flask import Blueprint, redirect, render_template_string, request, session, url_for
+from flask import Blueprint, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from server.app import db
@@ -9,48 +9,12 @@ from server.models import AdminUser, AuditLog, Server
 
 auth_bp = Blueprint("auth", __name__)
 
-# --- Login page template ---
-
-LOGIN_TEMPLATE = """
-<!doctype html>
-<html>
-<head>
-    <title>SSHADmin — Login</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
-</head>
-<body class="bg-light">
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="card-title text-center mb-4">SSHADmin</h4>
-                    {% if error %}
-                    <div class="alert alert-danger">{{ error }}</div>
-                    {% endif %}
-                    <form method="POST">
-                        <div class="form-group">
-                            <input type="text" name="username" class="form-control"
-                                   placeholder="Username" required autofocus>
-                        </div>
-                        <div class="form-group">
-                            <input type="password" name="password" class="form-control"
-                                   placeholder="Password" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-block">Login</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</body>
-</html>
-"""
-
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login_page():
+    if session.get("admin_logged_in"):
+        return redirect(url_for("views.dashboard"))
+
     if request.method == "POST":
         username = request.form.get("username", "")
         password = request.form.get("password", "")
@@ -58,9 +22,9 @@ def login_page():
         if admin and check_password_hash(admin.password_hash, password):
             session["admin_logged_in"] = True
             session["admin_username"] = username
-            return redirect(url_for("admin.index"))
-        return render_template_string(LOGIN_TEMPLATE, error="Bad credentials")
-    return render_template_string(LOGIN_TEMPLATE, error=None)
+            return redirect(url_for("views.dashboard"))
+        return render_template("login.html", error="Bad credentials")
+    return render_template("login.html", error=None)
 
 
 @auth_bp.route("/logout")

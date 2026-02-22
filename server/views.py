@@ -55,6 +55,46 @@ def servers():
     return render_template("servers.html", servers=all_servers)
 
 
+@views_bp.route("/servers/<int:id>")
+@login_required
+def server_detail(id):
+    server = Server.query.get_or_404(id)
+    all_users = User.query.order_by(User.username).all()
+
+    # Build list of (user, access_type_list) tuples
+    users_access = {}
+    for u in server.direct_users:
+        users_access.setdefault(u.id, [u, []])
+        users_access[u.id][1].append("direct")
+    for group in server.groups:
+        for u in group.users:
+            users_access.setdefault(u.id, [u, []])
+            users_access[u.id][1].append(group.name)
+
+    all_server_users = [(v[0], v[1]) for v in users_access.values()]
+
+    return render_template(
+        "server_detail.html",
+        server=server,
+        all_users=all_users,
+        all_server_users=all_server_users,
+    )
+
+
+@views_bp.route("/servers/<int:id>/assign", methods=["POST"])
+@login_required
+def server_assign_users(id):
+    server = Server.query.get_or_404(id)
+    admin = session.get("admin_username", "admin")
+
+    selected_user_ids = request.form.getlist("users", type=int)
+    server.direct_users = User.query.filter(User.id.in_(selected_user_ids)).all()
+    db.session.commit()
+    audit_log(admin, "server.assign_users", f"server:{server.hostname}", f"Assigned {len(selected_user_ids)} users")
+    flash(f"Users assigned to {server.hostname}.", "success")
+    return redirect(url_for("views.server_detail", id=server.id))
+
+
 @views_bp.route("/servers/<int:id>/action", methods=["POST"])
 @login_required
 def server_action(id):
@@ -98,6 +138,7 @@ def users():
 def user_edit(id=None):
     user = User.query.get(id) if id else None
     all_groups = Group.query.order_by(Group.name).all()
+    all_servers = Server.query.filter_by(status="approved").order_by(Server.hostname).all()
 
     if request.method == "POST":
         admin = session.get("admin_username", "admin")
@@ -106,10 +147,10 @@ def user_edit(id=None):
             username = request.form.get("username", "").strip()
             if not username:
                 flash("Username is required.", "error")
-                return render_template("user_edit.html", user=None, all_groups=all_groups)
+                return render_template("user_edit.html", user=None, all_groups=all_groups, all_servers=all_servers)
             if User.query.filter_by(username=username).first():
                 flash(f"User '{username}' already exists.", "error")
-                return render_template("user_edit.html", user=None, all_groups=all_groups)
+                return render_template("user_edit.html", user=None, all_groups=all_groups, all_servers=all_servers)
             user = User(username=username, source="manual")
             db.session.add(user)
             action_name = "user.create"
@@ -128,12 +169,16 @@ def user_edit(id=None):
         selected_group_ids = request.form.getlist("groups", type=int)
         user.groups = Group.query.filter(Group.id.in_(selected_group_ids)).all()
 
+        # Update direct server assignment
+        selected_server_ids = request.form.getlist("servers", type=int)
+        user.direct_servers = Server.query.filter(Server.id.in_(selected_server_ids)).all()
+
         db.session.commit()
         audit_log(admin, action_name, f"user:{user.username}")
         flash(f"User {user.username} saved.", "success")
         return redirect(url_for("views.users"))
 
-    return render_template("user_edit.html", user=user, all_groups=all_groups)
+    return render_template("user_edit.html", user=user, all_groups=all_groups, all_servers=all_servers)
 
 
 @views_bp.route("/users/<int:id>/action", methods=["POST"])

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}{{ server.hostname }} — SSHADmin{% endblock %}
+{% block page_title %}Server: {{ server.hostname }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Server Info -->
+    <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Hostname</div>
+                <div class="text-sm font-medium text-gray-900">{{ server.hostname }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">IP Address</div>
+                <div class="text-sm font-mono text-gray-900">{{ server.ip_address }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">OS</div>
+                <div class="text-sm text-gray-900">{{ server.os_info or '—' }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Status</div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                    {{ 'bg-green-100 text-green-700' if server.status == 'approved' else '' }}
+                    {{ 'bg-yellow-100 text-yellow-700' if server.status == 'pending' else '' }}
+                    {{ 'bg-red-100 text-red-700' if server.status == 'rejected' else '' }}">
+                    {{ server.status }}
+                </span>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Last Heartbeat</div>
+                <div class="text-sm text-gray-900">{{ server.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if server.last_heartbeat else 'never' }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Registered</div>
+                <div class="text-sm text-gray-900">{{ server.registered_at.strftime('%Y-%m-%d %H:%M:%S') if server.registered_at else '' }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Groups</div>
+                <div class="flex flex-wrap gap-1">
+                    {% for g in server.groups %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-xs text-gray-600">{{ g.name }}</span>
+                    {% else %}
+                    <span class="text-sm text-gray-400">none</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assign Users -->
+    <div class="bg-white rounded-xl border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-gray-900">Direct User Assignment</h2>
+        </div>
+        <div class="p-6">
+            <form method="POST" action="{{ url_for('views.server_assign_users', id=server.id) }}">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
+                    {% for user in all_users %}
+                    <label class="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                        <input type="checkbox" name="users" value="{{ user.id }}"
+                               {{ 'checked' if user in server.direct_users else '' }}
+                               class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                        <span class="text-sm text-gray-700">{{ user.username }}</span>
+                        {% if user.source == 'discovered' %}
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">discovered</span>
+                        {% endif %}
+                        {% if user.is_blocked %}
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-600">blocked</span>
+                        {% endif %}
+                    </label>
+                    {% else %}
+                    <p class="text-sm text-gray-500 col-span-3">No users created yet. <a href="{{ url_for('views.user_edit') }}" class="text-primary-600 hover:underline">Create one</a>.</p>
+                    {% endfor %}
+                </div>
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    Save Assignment
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Users with access -->
+    <div class="bg-white rounded-xl border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">All Users with Access ({{ all_server_users|length }})</h2>
+            <p class="text-xs text-gray-500 mt-1">Users assigned directly or via groups</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-gray-100">
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Username</th>
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Source</th>
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Access via</th>
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">SSH Keys</th>
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Password</th>
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Sudo</th>
+                        <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                        <th class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                    {% for user, access_type in all_server_users %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ user.username }}</td>
+                        <td class="px-6 py-4">
+                            {% if user.source == 'discovered' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">discovered</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">manual</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if 'direct' in access_type %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mr-1">direct</span>
+                            {% endif %}
+                            {% for g in access_type %}
+                            {% if g != 'direct' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 mr-1">{{ g }}</span>
+                            {% endif %}
+                            {% endfor %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">
+                            {{ user.ssh_public_keys.split('\n')|select|list|length if user.ssh_public_keys else 0 }} key(s)
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500">
+                            {% if user.password %}
+                            <span class="text-green-600">set</span>
+                            {% else %}
+                            <span class="text-gray-400">none</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if user.is_sudo %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">sudo</span>
+                            {% else %}
+                            <span class="text-xs text-gray-400">no</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if user.is_blocked %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">blocked</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">active</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <a href="{{ url_for('views.user_edit', id=user.id) }}"
+                               class="px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors">
+                                Edit
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="px-6 py-12 text-center text-sm text-gray-500">
+                            No users have access to this server. Assign users above or add this server to a group.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

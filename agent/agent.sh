@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-CONFIG_DIR="/root/manipulator"
+CONFIG_DIR="/opt/sshadmin"
 CONFIG_FILE="${CONFIG_DIR}/agent.conf"
 LOG_TAG="sshadmin-agent"
 SSHD_CONFIG="/etc/ssh/sshd_config"
@@ -120,14 +120,26 @@ set_password() {
 lock_user() {
     local username="$1"
     if is_protected "$username"; then return 1; fi
+    # Lock password
     /usr/sbin/usermod -L "$username" 2>/dev/null || true
-    log_info "Locked user: ${username}"
+    # Expire account — prevents ALL login including SSH keys
+    /usr/sbin/usermod -e 1 "$username" 2>/dev/null || true
+    # Remove authorized_keys to block key-based access
+    local home_dir
+    home_dir=$(/usr/bin/getent passwd "$username" | /usr/bin/cut -d: -f6)
+    if [[ -n "$home_dir" ]] && [[ -f "${home_dir}/.ssh/authorized_keys" ]]; then
+        /bin/mv -f "${home_dir}/.ssh/authorized_keys" "${home_dir}/.ssh/authorized_keys.blocked" 2>/dev/null || true
+    fi
+    log_info "Locked user: ${username} (password locked + account expired + keys removed)"
 }
 
 unlock_user() {
     local username="$1"
     if is_protected "$username"; then return 1; fi
+    # Unlock password
     /usr/sbin/usermod -U "$username" 2>/dev/null || true
+    # Remove account expiry
+    /usr/sbin/usermod -e "" "$username" 2>/dev/null || true
 }
 
 sync_ssh_keys() {

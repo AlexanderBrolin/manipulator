@@ -81,28 +81,35 @@ def pull():
     password_auth = False
     pubkey_auth = True
 
+    def add_user_to_map(user):
+        if user.username not in users_map:
+            keys = (
+                [k for k in user.ssh_public_keys.split("\n") if k.strip()]
+                if user.ssh_public_keys
+                else []
+            )
+            users_map[user.username] = {
+                "username": user.username,
+                "ssh_keys": keys,
+                "password": user.password or "",
+                "is_sudo": user.is_sudo,
+                "is_blocked": user.is_blocked,
+                "shell": user.shell,
+            }
+
+    # Users assigned directly to this server
+    for user in server.direct_users:
+        add_user_to_map(user)
+
+    # Users assigned via groups
     for group in server.groups:
-        # SSH policy: if any group enables password_auth, it's on
         if group.password_auth:
             password_auth = True
         if not group.pubkey_auth:
             pubkey_auth = False
 
         for user in group.users:
-            if user.username not in users_map:
-                keys = (
-                    [k for k in user.ssh_public_keys.split("\n") if k.strip()]
-                    if user.ssh_public_keys
-                    else []
-                )
-                users_map[user.username] = {
-                    "username": user.username,
-                    "ssh_keys": keys,
-                    "password": user.password or "",
-                    "is_sudo": user.is_sudo,
-                    "is_blocked": user.is_blocked,
-                    "shell": user.shell,
-                }
+            add_user_to_map(user)
 
     return jsonify(
         users=list(users_map.values()),

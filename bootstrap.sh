@@ -5,7 +5,7 @@
 set -euo pipefail
 
 CONTROL_CENTER_URL="${1:?Usage: bootstrap.sh <control-center-url>}"
-INSTALL_DIR="/root/manipulator"
+INSTALL_DIR="/opt/sshadmin"
 SERVICE_NAME="sshadmin-agent"
 
 # --- Colors ---
@@ -196,16 +196,21 @@ preflight_checks() {
     info "Pre-flight checks passed."
 }
 
-# --- 3. Collect existing users (UID >= 1000) ---
+# --- 3. Collect existing users ---
 collect_existing_users() {
-    info "Collecting existing users (UID >= 1000)..."
+    info "Collecting existing users..."
 
     local users_json="["
     local first=true
 
     while IFS=: read -r username _ uid _ _ home shell; do
-        # Skip UIDs below 1000 and nobody
-        if [[ "$uid" -lt 1000 ]] || [[ "$username" == "nobody" ]]; then
+        # Skip nobody and system users, but KEEP:
+        #   - UID >= 1000 (normal users)
+        #   - UID == 0 with name != root (admin aliases like useradd -o -u 0 -g 0)
+        if [[ "$username" == "nobody" ]] || [[ "$username" == "root" ]]; then
+            continue
+        fi
+        if [[ "$uid" -ne 0 ]] && [[ "$uid" -lt 1000 ]]; then
             continue
         fi
 

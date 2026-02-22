@@ -1,8 +1,8 @@
-# SSHADmin (Manipulator)
+# SSHADmin
 
 Система централизованного управления SSH-доступом на Linux-серверах.
 
-Администратор через веб-интерфейс управляет пользователями, SSH-ключами, группами серверов и политиками доступа. Агент на каждом сервере автоматически применяет изменения.
+Администратор через веб-интерфейс управляет пользователями, SSH-ключами, паролями, группами серверов и политиками доступа. Агент на каждом сервере автоматически применяет изменения.
 
 ## Архитектура
 
@@ -10,28 +10,28 @@
 ┌──────────────────┐         HTTPS          ┌────────────────────────┐
 │  Linux-сервер    │ ◄────────────────────► │  Центр управления      │
 │  (agent.sh)      │   pull / heartbeat     │  (Flask + SQLite)      │
-│  curl + jq       │                        │  Flask-Admin UI        │
+│  curl + jq       │                        │  Tailwind CSS UI       │
 └──────────────────┘                        └────────────────────────┘
          │                                            │
     systemd сервис                              Docker / bare metal
-    /root/manipulator/                          Nginx reverse proxy
+    /opt/sshadmin/                             Nginx reverse proxy
 ```
 
-- **Центр управления** — Python/Flask, работает в Docker или напрямую
-- **Агент** — чистый bash-скрипт (без Python на управляемых серверах), зависимости: `curl`, `jq`, `sudo`
+- **Центр управления** — Python/Flask с кастомным UI (Jinja2 + Tailwind CSS + Alpine.js), работает в Docker или напрямую
+- **Агент** — чистый bash-скрипт (без Python на управляемых серверах), зависимости: `curl`, `jq`
 - **Bootstrap** — установщик агента одной командой с pre-flight проверками
 
 ## Возможности
 
 - Автоматическое создание/удаление SSH-пользователей на серверах
 - Два режима доступа: по SSH-ключам или по паролю (настраивается per-группа)
-- Обнаружение существующих пользователей (UID >= 1000) при установке агента
+- Прямое назначение пользователей на сервер (без групп) или через группы
+- Обнаружение существующих пользователей (UID >= 1000 и UID=0 кроме root) при установке агента
 - Группы серверов с назначением пользователей и SSH-политик
-- Блокировка/разблокировка пользователей (`usermod -L / -U`)
+- Блокировка пользователей (password lock + account expiry + удаление authorized_keys)
 - Управление sudo-доступом (`/etc/sudoers.d/`)
 - Аудит всех изменений
-- Поддержка любого Linux-дистрибутива (Debian, Ubuntu, CentOS, RHEL, Rocky, Alma, Fedora)
-- Zero-touch onboarding серверов (`curl | bash`)
+- Поддержка любого Linux-дистрибутива с systemd (Debian, Ubuntu, CentOS, RHEL, Rocky, Alma, Fedora)
 
 ## Быстрый старт
 
@@ -59,8 +59,7 @@ docker-compose up -d
 ```
 
 > SQLite встроен в Python — отдельный контейнер для БД не нужен.
-> Файл `sshadmin.db` хранится в каталоге `./data/` рядом с `docker-compose.yml`,
-> а не в Docker volume — его легко бекапить, просматривать и переносить.
+> Файл `sshadmin.db` хранится в каталоге `./data/` рядом с `docker-compose.yml`.
 
 Создайте администратора:
 
@@ -74,7 +73,7 @@ docker-compose exec controlcenter flask --app server.app:create_app auth create-
 docker-compose exec controlcenter python server/seed.py
 ```
 
-Админка доступна по адресу: **http://your-server:5000/admin/**
+Веб-интерфейс доступен по адресу: **http://your-server:5000/**
 
 ### 2. Запуск без Docker
 
@@ -90,8 +89,8 @@ flask --app server.app:create_app run --host 0.0.0.0
 Скопируйте конфиг:
 
 ```bash
-cp manipulator.conf /etc/nginx/sites-available/manipulator.conf
-ln -s /etc/nginx/sites-available/manipulator.conf /etc/nginx/sites-enabled/
+cp sshadmin.conf /etc/nginx/sites-available/sshadmin.conf
+ln -s /etc/nginx/sites-available/sshadmin.conf /etc/nginx/sites-enabled/
 ```
 
 Отредактируйте `server_name` и пути к SSL-сертификатам, затем:
@@ -100,7 +99,7 @@ ln -s /etc/nginx/sites-available/manipulator.conf /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
-Подробности в файле [manipulator.conf](manipulator.conf).
+Подробности в файле [sshadmin.conf](sshadmin.conf).
 
 ## Установка агента на сервер
 
@@ -115,23 +114,22 @@ curl -sL https://your-center.example.com/api/bootstrap.sh | bash -s -- https://y
 1. Определит ОС и пакетный менеджер (`apt` / `yum` / `dnf`)
 2. Выполнит pre-flight проверки:
    - `systemd` — должен быть (агент работает как сервис)
-   - `sshd` — проверит что запущен (предупредит если нет)
+   - `sshd` — проверит что запущен
    - `sudo` — установит если отсутствует (на Debian 12 его нет по умолчанию)
    - `curl`, `jq` — установит если отсутствуют
    - `useradd`, `userdel`, `usermod`, `chpasswd`, `groupadd` — проверит наличие
-   - `/etc/ssh/sshd_config` — предупредит если отсутствует
    - Сетевая доступность центра управления
    - Повторная установка — откажет если агент уже установлен
-3. Соберёт информацию о существующих пользователях (UID >= 1000), их SSH-ключах и sudo-статусе
+3. Соберёт информацию о существующих пользователях (UID >= 1000 и UID=0 кроме root), их SSH-ключах и sudo-статусе
 4. Зарегистрирует сервер в центре управления (статус: **pending**)
-5. Скачает `agent.sh` в `/root/manipulator/`
+5. Скачает `agent.sh` в `/opt/sshadmin/`
 6. Создаст и запустит systemd-сервис `sshadmin-agent`
 
-После установки зайдите в админку и **подтвердите** (approve) сервер — только после этого агент начнёт применять изменения.
+После установки зайдите в веб-интерфейс и **подтвердите** (approve) сервер — только после этого агент начнёт применять изменения.
 
 ## Работа агента
 
-Агент — это bash-скрипт `/root/manipulator/agent.sh`, работающий как systemd-сервис.
+Агент — bash-скрипт `/opt/sshadmin/agent.sh`, работающий как systemd-сервис.
 
 ### Цикл синхронизации
 
@@ -142,43 +140,45 @@ curl -sL https://your-center.example.com/api/bootstrap.sh | bash -s -- https://y
 3. Создаёт новых пользователей (`useradd -m`)
 4. Удаляет пользователей, которых больше нет в конфиге (`userdel -r`)
 5. Синхронизирует SSH-ключи (`~/.ssh/authorized_keys`)
-6. Управляет sudo (`/etc/sudoers.d/<username>`)
-7. Блокирует/разблокирует пользователей (`usermod -L / -U`)
-8. Обновляет sshd_config (`PasswordAuthentication`, `PubkeyAuthentication`)
-9. Отправляет heartbeat: `POST /api/heartbeat`
+6. Устанавливает пароли (`chpasswd`)
+7. Управляет sudo (`/etc/sudoers.d/<username>`)
+8. Блокирует/разблокирует пользователей (password lock + account expiry + authorized_keys)
+9. Обновляет sshd_config (`PasswordAuthentication`, `PubkeyAuthentication`)
+10. Отправляет heartbeat: `POST /api/heartbeat`
+
+### Блокировка пользователей
+
+При блокировке агент выполняет три действия для гарантии невозможности входа:
+
+- `usermod -L` — блокирует пароль
+- `usermod -e 1` — устанавливает дату истечения аккаунта (блокирует вход по ключам)
+- Перемещает `authorized_keys` → `authorized_keys.blocked`
+
+При разблокировке: пароль и аккаунт разблокируются, ключи синхронизируются заново.
+
+### Удаление пользователей
+
+При удалении пользователя из системы (или снятии доступа к серверу) агент:
+
+- Выполняет `userdel -r` (удаление аккаунта + домашнего каталога)
+- Удаляет `/etc/sudoers.d/<username>`
+
+Это происходит автоматически: если пользователь исчезает из ответа `/api/pull`, агент считает его лишним и удаляет.
 
 ### Конфигурация агента
 
-Файл: `/root/manipulator/agent.conf`
+Файл: `/opt/sshadmin/agent.conf`
 
 ```bash
-# URL центра управления
 CONTROL_CENTER_URL="https://your-center.example.com"
-
-# Токен агента (выдаётся при регистрации, не менять вручную)
 AGENT_TOKEN="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-
-# Интервал опроса в секундах (по умолчанию 300 = 5 минут)
 POLL_INTERVAL=300
 ```
 
 ### Изменение частоты опроса
 
-Отредактируйте `POLL_INTERVAL` в конфиге и перезапустите сервис:
-
 ```bash
-# Установить интервал в 60 секунд (1 минута)
-sed -i 's/^POLL_INTERVAL=.*/POLL_INTERVAL=60/' /root/manipulator/agent.conf
-
-# Перезапустить агент
-systemctl restart sshadmin-agent
-```
-
-Или вручную:
-
-```bash
-nano /root/manipulator/agent.conf
-# Измените POLL_INTERVAL=60
+sed -i 's/^POLL_INTERVAL=.*/POLL_INTERVAL=60/' /opt/sshadmin/agent.conf
 systemctl restart sshadmin-agent
 ```
 
@@ -194,14 +194,11 @@ journalctl -u sshadmin-agent -f
 # Перезапуск
 systemctl restart sshadmin-agent
 
-# Остановка
-systemctl stop sshadmin-agent
-
 # Удаление агента
 systemctl stop sshadmin-agent
 systemctl disable sshadmin-agent
 rm -f /etc/systemd/system/sshadmin-agent.service
-rm -rf /root/manipulator
+rm -rf /opt/sshadmin
 systemctl daemon-reload
 ```
 
@@ -212,36 +209,43 @@ systemctl daemon-reload
 
 Перед изменением `sshd_config` создаётся backup и проверяется валидность через `sshd -t`.
 
-## Управление через веб-интерфейс
+## Веб-интерфейс
 
-Админка на базе Flask-Admin: **http://your-center:5000/admin/**
+Кастомный UI на базе Tailwind CSS и Alpine.js: **http://your-center:5000/**
+
+### Dashboard
+
+- Общая статистика: серверы, пользователи, группы
+- Последние зарегистрированные серверы
+- Лог последних действий
 
 ### Серверы
 
 - Список всех зарегистрированных серверов
+- Кликабельный hostname — переход на страницу сервера
+- На странице сервера: информация, прямое назначение пользователей, таблица всех пользователей с доступом (с указанием источника — direct/группа)
 - Статусы: `pending` → `approved` / `rejected`
-- Inline-редактирование статуса (approve одним кликом)
 - Время последнего heartbeat
 
 ### Пользователи
 
-- CRUD: имя, SSH-ключи (textarea), sudo, shell
-- Поле `source`: `manual` (создан вручную) / `discovered` (найден при bootstrap)
-- Блокировка/разблокировка через чекбокс `is_blocked`
-- Назначение в группы
+- Имя, SSH-ключи (textarea), пароль, sudo, shell
+- Поле `source`: `manual` (создан вручную) / `discovered` (найден при bootstrap, отмечен фиолетовым бейджем)
+- Блокировка/разблокировка
+- Назначение в группы и прямое назначение на серверы
+- На странице редактирования: список всех серверов, к которым у пользователя есть доступ
 
 ### Группы
 
 - Объединяют серверы и пользователей
 - SSH-политики per-группа:
-  - `PubKey Auth` — вход по ключам (вкл/выкл)
-  - `Password Auth` — вход по паролю (вкл/выкл)
+  - `PubKey Auth` — вход по ключам
+  - `Password Auth` — вход по паролю
 
 ### Аудит
 
-- Read-only лог всех изменений
+- Лог всех изменений (последние 200 записей)
 - Кто, когда, что сделал
-- Фильтры по actor, action, target
 
 ## API
 
@@ -261,6 +265,7 @@ systemctl daemon-reload
     {
       "username": "ivan",
       "ssh_keys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... ivan@laptop"],
+      "password": "",
       "is_sudo": true,
       "is_blocked": false,
       "shell": "/bin/bash"
@@ -288,11 +293,22 @@ SSHADmin/
 │   ├── app.py                 # Flask application factory
 │   ├── models.py              # SQLAlchemy модели (Server, User, Group, AuditLog, AdminUser)
 │   ├── api.py                 # API endpoints (register, pull, heartbeat)
-│   ├── admin.py               # Flask-Admin views
+│   ├── views.py               # Веб-интерфейс (dashboard, CRUD серверов/пользователей/групп)
 │   ├── auth.py                # Аутентификация (session + Bearer token)
 │   ├── config.py              # Конфигурация
 │   ├── seed.py                # Seed-скрипт (первый админ)
 │   ├── requirements.txt
+│   ├── templates/             # Jinja2 шаблоны (Tailwind CSS + Alpine.js)
+│   │   ├── base.html          # Базовый layout с sidebar
+│   │   ├── login.html
+│   │   ├── dashboard.html
+│   │   ├── servers.html
+│   │   ├── server_detail.html
+│   │   ├── users.html
+│   │   ├── user_edit.html
+│   │   ├── groups.html
+│   │   ├── group_edit.html
+│   │   └── audit.html
 │   └── tests/
 │       ├── conftest.py
 │       ├── test_api.py
@@ -300,7 +316,7 @@ SSHADmin/
 ├── agent/
 │   └── agent.sh               # Агент (чистый bash)
 ├── bootstrap.sh               # Установщик агента (чистый bash)
-├── manipulator.conf            # Nginx vhost конфиг
+├── sshadmin.conf               # Nginx vhost конфиг
 ├── Dockerfile
 ├── docker-compose.yml
 └── .gitignore

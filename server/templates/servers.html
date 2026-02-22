@@ -25,7 +25,9 @@
             <tbody class="divide-y divide-gray-50">
                 {% for server in servers %}
                 <tr class="hover:bg-gray-50 transition-colors">
-                    <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ server.hostname }}</td>
+                    <td class="px-6 py-4 text-sm font-medium">
+                        <a href="{{ url_for('views.server_detail', id=server.id) }}" class="text-primary-700 hover:text-primary-900 hover:underline">{{ server.hostname }}</a>
+                    </td>
                     <td class="px-6 py-4 text-sm text-gray-500 font-mono">{{ server.ip_address }}</td>
                     <td class="px-6 py-4 text-sm text-gray-500">{{ server.os_info }}</td>
                     <td class="px-6 py-4">

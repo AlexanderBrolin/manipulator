@@ -15,6 +15,13 @@ group_servers = db.Table(
     db.Column("server_id", db.Integer, db.ForeignKey("servers.id"), primary_key=True),
 )
 
+# Direct user-to-server assignment (without groups)
+server_users = db.Table(
+    "server_users",
+    db.Column("server_id", db.Integer, db.ForeignKey("servers.id"), primary_key=True),
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
+)
+
 
 # --- Models ---
 
@@ -34,6 +41,15 @@ class Server(db.Model):
     )
 
     groups = db.relationship("Group", secondary=group_servers, back_populates="servers")
+    direct_users = db.relationship("User", secondary=server_users, back_populates="direct_servers")
+
+    def get_all_users(self):
+        """Return all users with access: direct + via groups. Deduplicated."""
+        users = {u.id: u for u in self.direct_users}
+        for group in self.groups:
+            for u in group.users:
+                users[u.id] = u
+        return list(users.values())
 
     def __repr__(self):
         return f"<Server {self.hostname} [{self.status}]>"
@@ -55,6 +71,15 @@ class User(db.Model):
     )
 
     groups = db.relationship("Group", secondary=group_users, back_populates="users")
+    direct_servers = db.relationship("Server", secondary=server_users, back_populates="direct_users")
+
+    def get_all_servers(self):
+        """Return all servers this user has access to: direct + via groups. Deduplicated."""
+        servers = {s.id: s for s in self.direct_servers}
+        for group in self.groups:
+            for s in group.servers:
+                servers[s.id] = s
+        return list(servers.values())
 
     def __repr__(self):
         return f"<User {self.username} [{self.source}]>"

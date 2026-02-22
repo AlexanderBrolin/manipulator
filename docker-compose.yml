@@ -4,13 +4,16 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - db_data:/app/data
-      - ./agent:/app/static/agent
-      - ./bootstrap.sh:/app/static/bootstrap.sh:ro
+      # DB stored next to docker-compose.yml, not in a Docker volume
+      - ./data:/app/data
+      # Agent and bootstrap scripts served via API for download
+      - ./agent:/app/agent:ro
+      - ./bootstrap.sh:/app/bootstrap.sh:ro
+    working_dir: /app
     environment:
       - SECRET_KEY=changeme-in-production
       - JWT_SECRET_KEY=jwt-changeme-in-production
+      # SQLite is built into Python — no separate DB image needed.
+      # The .db file is stored in ./data/ alongside docker-compose.yml.
       - DATABASE_URL=sqlite:////app/data/sshadmin.db
-
-volumes:
-  db_data:
+    restart: unless-stopped

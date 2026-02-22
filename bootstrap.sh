@@ -18,7 +18,11 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
-# --- Check root ---
+# ============================================================
+# Pre-flight checks
+# ============================================================
+
+# --- Must be root ---
 if [[ $EUID -ne 0 ]]; then
     error "This script must be run as root"
     exit 1
@@ -67,25 +71,129 @@ detect_os() {
     info "Detected OS: ${OS_NAME} (package manager: ${PKG_MANAGER})"
 }
 
-# --- 2. Install dependencies (curl + jq) ---
-install_deps() {
-    info "Checking dependencies..."
+# --- 2. Check and install system prerequisites ---
+preflight_checks() {
+    info "Running pre-flight checks..."
 
-    local need_install=false
-    if ! command -v curl &>/dev/null; then
-        need_install=true
-    fi
-    if ! command -v jq &>/dev/null; then
-        need_install=true
-    fi
+    local pkg_updated=false
 
-    if [[ "$need_install" == "true" ]]; then
-        info "Installing curl and jq..."
-        $PKG_UPDATE 2>/dev/null || true
-        $PKG_INSTALL curl jq
+    # --- systemd ---
+    if ! command -v systemctl &>/dev/null; then
+        error "systemd not found. This system must use systemd to run the agent."
+        exit 1
+    fi
+    info "  [ok] systemd"
+
+    # --- sshd ---
+    if ! systemctl is-active --quiet sshd 2>/dev/null && ! systemctl is-active --quiet ssh 2>/dev/null; then
+        warn "  SSH server (sshd) is not running. The agent manages SSH users — make sure sshd is installed."
     else
-        info "curl and jq already installed."
+        info "  [ok] sshd running"
     fi
+
+    # --- sudo ---
+    if ! command -v sudo &>/dev/null; then
+        warn "  sudo not found — installing..."
+        if [[ "$pkg_updated" == "false" ]]; then
+            $PKG_UPDATE 2>/dev/null || true
+            pkg_updated=true
+        fi
+        $PKG_INSTALL sudo
+        if command -v sudo &>/dev/null; then
+            info "  [ok] sudo installed"
+        else
+            error "Failed to install sudo"
+            exit 1
+        fi
+    else
+        info "  [ok] sudo"
+    fi
+
+    # --- curl ---
+    if ! command -v curl &>/dev/null; then
+        warn "  curl not found — installing..."
+        if [[ "$pkg_updated" == "false" ]]; then
+            $PKG_UPDATE 2>/dev/null || true
+            pkg_updated=true
+        fi
+        $PKG_INSTALL curl
+        if command -v curl &>/dev/null; then
+            info "  [ok] curl installed"
+        else
+            error "Failed to install curl"
+            exit 1
+        fi
+    else
+        info "  [ok] curl"
+    fi
+
+    # --- jq ---
+    if ! command -v jq &>/dev/null; then
+        warn "  jq not found — installing..."
+        if [[ "$pkg_updated" == "false" ]]; then
+            $PKG_UPDATE 2>/dev/null || true
+            pkg_updated=true
+        fi
+        $PKG_INSTALL jq
+        if command -v jq &>/dev/null; then
+            info "  [ok] jq installed"
+        else
+            error "Failed to install jq"
+            exit 1
+        fi
+    else
+        info "  [ok] jq"
+    fi
+
+    # --- useradd / userdel / usermod ---
+    local missing_cmds=()
+    for cmd in useradd userdel usermod chpasswd groupadd; do
+        if ! command -v "$cmd" &>/dev/null; then
+            # On some systems these are in /usr/sbin which may not be in PATH
+            if [[ -x "/usr/sbin/${cmd}" ]]; then
+                continue
+            fi
+            missing_cmds+=("$cmd")
+        fi
+    done
+    if [[ ${#missing_cmds[@]} -gt 0 ]]; then
+        error "Missing required commands: ${missing_cmds[*]}"
+        error "These are part of shadow-utils (RHEL/CentOS) or passwd (Debian/Ubuntu)."
+        error "Install them manually and re-run bootstrap."
+        exit 1
+    fi
+    info "  [ok] user management tools (useradd, userdel, usermod, chpasswd)"
+
+    # --- /etc/ssh/sshd_config ---
+    if [[ ! -f /etc/ssh/sshd_config ]]; then
+        warn "  /etc/ssh/sshd_config not found. Agent won't be able to manage SSH policies."
+        warn "  Install openssh-server if SSH access management is needed."
+    else
+        info "  [ok] /etc/ssh/sshd_config"
+    fi
+
+    # --- Network: can reach control center ---
+    info "  Checking connectivity to control center..."
+    if ! curl -sf --max-time 10 -o /dev/null "${CONTROL_CENTER_URL}/api/bootstrap.sh" 2>/dev/null; then
+        # Try just the base URL
+        if ! curl -sf --max-time 10 -o /dev/null "${CONTROL_CENTER_URL}/" 2>/dev/null; then
+            error "Cannot reach control center at ${CONTROL_CENTER_URL}"
+            error "Check the URL, DNS, firewall, and that the control center is running."
+            exit 1
+        fi
+    fi
+    info "  [ok] control center reachable"
+
+    # --- Check if agent is already installed ---
+    if [[ -f "${INSTALL_DIR}/agent.conf" ]]; then
+        warn "Agent already installed at ${INSTALL_DIR}/"
+        warn "To re-install, first remove the existing agent:"
+        warn "  systemctl stop ${SERVICE_NAME} && rm -rf ${INSTALL_DIR}"
+        error "Aborting to prevent duplicate registration."
+        exit 1
+    fi
+
+    info "Pre-flight checks passed."
 }
 
 # --- 3. Collect existing users (UID >= 1000) ---
@@ -120,6 +228,12 @@ collect_existing_users() {
         local user_groups
         user_groups=$(groups "$username" 2>/dev/null | cut -d: -f2 | xargs -n1 | jq -R . | jq -s . 2>/dev/null || echo "[]")
 
+        # Check if user has sudo access
+        local has_sudo=false
+        if groups "$username" 2>/dev/null | grep -qE '\b(sudo|wheel)\b'; then
+            has_sudo=true
+        fi
+
         # Build user JSON
         if [[ "$first" == "true" ]]; then
             first=false
@@ -132,9 +246,10 @@ collect_existing_users() {
             --argjson k "$keys_json" \
             --argjson g "$user_groups" \
             --arg s "$shell" \
-            '{username: $u, ssh_keys: $k, groups: $g, shell: $s}')
+            --argjson sudo "$has_sudo" \
+            '{username: $u, ssh_keys: $k, groups: $g, shell: $s, has_sudo: $sudo}')
 
-        info "  Found user: ${username} (shell: ${shell}, keys: $(echo "$keys_json" | jq length))"
+        info "  Found user: ${username} (shell: ${shell}, keys: $(echo "$keys_json" | jq length), sudo: ${has_sudo})"
     done < /etc/passwd
 
     users_json+="]"
@@ -242,7 +357,9 @@ SVC
     info "Service ${SERVICE_NAME} enabled and started."
 }
 
-# --- Main ---
+# ============================================================
+# Main
+# ============================================================
 
 echo ""
 echo "==============================="
@@ -251,7 +368,7 @@ echo "==============================="
 echo ""
 
 detect_os
-install_deps
+preflight_checks
 register_server
 install_agent
 create_service

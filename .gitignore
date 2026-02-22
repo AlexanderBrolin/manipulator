@@ -10,3 +10,4 @@ instance/
 dist/
 build/
 .pytest_cache/
+data/

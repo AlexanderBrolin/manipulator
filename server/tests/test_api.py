@@ -29,8 +29,8 @@ def test_register_new_server(client):
 
 
 def test_register_imports_existing_users(client, db_session):
-    """Existing users from bootstrap are imported with source=discovered."""
-    client.post(
+    """Existing users from bootstrap are imported with source=discovered and linked to server."""
+    resp = client.post(
         "/api/register",
         json={
             "hostname": "web02",
@@ -50,6 +50,11 @@ def test_register_imports_existing_users(client, db_session):
     bob = User.query.filter_by(username="bob").first()
     assert bob is not None
     assert bob.source == "discovered"
+
+    # Verify discovered users are linked to the server
+    server = Server.query.filter_by(hostname="web02").first()
+    assert alice in server.direct_users
+    assert bob in server.direct_users
 
 
 def test_register_missing_hostname(client):
@@ -138,6 +143,87 @@ def test_heartbeat(client, db_session):
 
     db_session.refresh(server)
     assert server.last_heartbeat is not None
+
+
+def test_pull_direct_user(client, db_session):
+    """GET /api/pull returns users assigned directly to server (without groups)."""
+    resp = client.post(
+        "/api/register",
+        json={"hostname": "web-direct", "ip_address": "10.0.0.20"},
+    )
+    token = resp.get_json()["agent_token"]
+    server = Server.query.filter_by(agent_token=token).first()
+    server.status = "approved"
+
+    user = User(username="directuser", ssh_public_keys="ssh-ed25519 DIRECT", password="secret123")
+    server.direct_users.append(user)
+    db_session.add(user)
+    db_session.commit()
+
+    resp = client.get(
+        "/api/pull",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    data = resp.get_json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "directuser"
+    assert data["users"][0]["password"] == "secret123"
+    assert "ssh-ed25519 DIRECT" in data["users"][0]["ssh_keys"]
+
+
+def test_pull_discovered_users_after_register(client, db_session):
+    """Discovered users appear in pull after server is approved."""
+    resp = client.post(
+        "/api/register",
+        json={
+            "hostname": "web-discovered",
+            "ip_address": "10.0.0.21",
+            "existing_users": [
+                {"username": "existing_user", "ssh_keys": ["ssh-rsa KEY1"], "shell": "/bin/bash"},
+            ],
+        },
+    )
+    token = resp.get_json()["agent_token"]
+    server = Server.query.filter_by(agent_token=token).first()
+    server.status = "approved"
+    db_session.commit()
+
+    resp = client.get(
+        "/api/pull",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    data = resp.get_json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "existing_user"
+    assert "ssh-rsa KEY1" in data["users"][0]["ssh_keys"]
+
+
+def test_deleted_user_removed_from_pull(client, db_session):
+    """After deleting a user from DB, they disappear from pull (agent will remove them)."""
+    resp = client.post(
+        "/api/register",
+        json={"hostname": "web-delete", "ip_address": "10.0.0.22"},
+    )
+    token = resp.get_json()["agent_token"]
+    server = Server.query.filter_by(agent_token=token).first()
+    server.status = "approved"
+
+    user = User(username="tobedeleted")
+    server.direct_users.append(user)
+    db_session.add(user)
+    db_session.commit()
+
+    # Verify user appears in pull
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    assert len(resp.get_json()["users"]) == 1
+
+    # Delete user
+    db_session.delete(user)
+    db_session.commit()
+
+    # Verify user is gone from pull
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    assert len(resp.get_json()["users"]) == 0
 
 
 def test_pull_blocked_user(client, db_session):

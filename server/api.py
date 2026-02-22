@@ -38,7 +38,7 @@ def register():
     db.session.add(server)
     db.session.flush()
 
-    # Import existing users discovered on the server
+    # Import existing users discovered on the server and link them to it
     imported = 0
     for eu in data.get("existing_users", []):
         username = eu.get("username", "").strip()
@@ -54,6 +54,9 @@ def register():
             )
             db.session.add(user)
             imported += 1
+        # Link discovered user directly to this server so agent won't delete them
+        if user not in server.direct_users:
+            server.direct_users.append(user)
 
     db.session.commit()
     audit_log(

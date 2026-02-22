@@ -99,18 +99,6 @@
                         <p class="text-sm text-gray-500">No approved servers yet.</p>
                         {% endfor %}
                     </div>
-                    {% if user %}
-                    {% set group_servers = [] %}
-                    {% for g in user.groups %}
-                    {% for s in g.servers %}
-                    {% if s.id not in group_servers %}
-                    {% if loop.first and loop.parent.loop.first %}
-                    <p class="text-xs text-gray-500 mt-2">Also has access via groups:</p>
-                    {% endif %}
-                    {% endif %}
-                    {% endfor %}
-                    {% endfor %}
-                    {% endif %}
                 </div>
 
                 {% if user %}

@@ -81,7 +81,7 @@
             {% for server in recent_servers %}
             <div class="px-6 py-3 flex items-center justify-between">
                 <div>
-                    <p class="text-sm font-medium text-gray-900">{{ server.hostname }}</p>
+                    <a href="{{ url_for('views.server_detail', id=server.id) }}" class="text-sm font-medium text-primary-700 hover:text-primary-900 hover:underline">{{ server.hostname }}</a>
                     <p class="text-xs text-gray-500">{{ server.ip_address }} &middot; {{ server.os_info }}</p>
                 </div>
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium

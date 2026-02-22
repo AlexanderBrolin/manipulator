@@ -87,7 +87,8 @@
                                 <button type="submit" class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">Unblock</button>
                             </form>
                             {% else %}
-                            <form method="POST" action="{{ url_for('views.user_action', id=user.id) }}" class="inline">
+                            <form method="POST" action="{{ url_for('views.user_action', id=user.id) }}" class="inline"
+                                  onsubmit="return confirm('Block user {{ user.username }}? They will be locked out of all servers.')">
                                 <input type="hidden" name="action" value="block">
                                 <button type="submit" class="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">Block</button>
                             </form>

@@ -1,0 +1,16 @@
+services:
+  control-center:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - db_data:/app/data
+      - ./agent:/app/static/agent
+      - ./bootstrap.sh:/app/static/bootstrap.sh:ro
+    environment:
+      - SECRET_KEY=changeme-in-production
+      - JWT_SECRET_KEY=jwt-changeme-in-production
+      - DATABASE_URL=sqlite:////app/data/sshadmin.db
+
+volumes:
+  db_data:

@@ -98,6 +98,7 @@ def pull():
                 users_map[user.username] = {
                     "username": user.username,
                     "ssh_keys": keys,
+                    "password": user.password or "",
                     "is_sudo": user.is_sudo,
                     "is_blocked": user.is_blocked,
                     "shell": user.shell,

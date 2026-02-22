@@ -45,6 +45,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     ssh_public_keys = db.Column(db.Text, default="")  # newline-separated
+    password = db.Column(db.String(256), default="")  # plaintext for chpasswd on servers
     is_sudo = db.Column(db.Boolean, default=False)
     is_blocked = db.Column(db.Boolean, default=False)
     shell = db.Column(db.String(128), default="/bin/bash")

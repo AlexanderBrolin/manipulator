@@ -117,6 +117,9 @@ def user_edit(id=None):
             action_name = "user.update"
 
         user.ssh_public_keys = request.form.get("ssh_public_keys", "")
+        password = request.form.get("password", "").strip()
+        if password:
+            user.password = password
         user.shell = request.form.get("shell", "/bin/bash")
         user.is_sudo = "is_sudo" in request.form
         user.is_blocked = "is_blocked" in request.form

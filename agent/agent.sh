@@ -105,6 +105,18 @@ delete_user() {
     fi
 }
 
+set_password() {
+    local username="$1"
+    local password="$2"
+    if [[ -z "$password" ]]; then
+        return
+    fi
+    if is_protected "$username"; then return 1; fi
+    echo "${username}:${password}" | /usr/sbin/chpasswd 2>/dev/null && \
+        log_info "Password set for user: ${username}" || \
+        log_error "Failed to set password for user: ${username}"
+}
+
 lock_user() {
     local username="$1"
     if is_protected "$username"; then return 1; fi
@@ -242,11 +254,12 @@ do_sync() {
 
     # 3. Apply desired state for each user
     for i in $(seq 0 $((user_count - 1))); do
-        local username shell is_sudo is_blocked
+        local username shell is_sudo is_blocked password
         username=$(echo "$response" | /usr/bin/jq -r ".users[$i].username")
         shell=$(echo "$response" | /usr/bin/jq -r ".users[$i].shell // \"/bin/bash\"")
         is_sudo=$(echo "$response" | /usr/bin/jq -r ".users[$i].is_sudo")
         is_blocked=$(echo "$response" | /usr/bin/jq -r ".users[$i].is_blocked")
+        password=$(echo "$response" | /usr/bin/jq -r ".users[$i].password // \"\"")
 
         if is_protected "$username"; then
             continue
@@ -273,8 +286,9 @@ do_sync() {
             unlock_user "$username"
         fi
 
-        # Sync SSH keys and sudo
+        # Sync SSH keys, password, and sudo
         sync_ssh_keys "$username" "${ssh_keys[@]+"${ssh_keys[@]}"}"
+        set_password "$username" "$password"
         sync_sudo "$username" "$is_sudo"
     done
 

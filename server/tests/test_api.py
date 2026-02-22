@@ -249,3 +249,122 @@ def test_pull_blocked_user(client, db_session):
     )
     data = resp.get_json()
     assert data["users"][0]["is_blocked"] is True
+
+
+def test_removing_user_from_group_keeps_direct_access(client, db_session):
+    """User removed from group retains direct server access."""
+    resp = client.post(
+        "/api/register",
+        json={"hostname": "web-grp-rm", "ip_address": "10.0.0.30"},
+    )
+    token = resp.get_json()["agent_token"]
+    server = Server.query.filter_by(agent_token=token).first()
+    server.status = "approved"
+
+    user = User(username="grptest_user", ssh_public_keys="ssh-ed25519 GRPKEY")
+    # Direct access
+    server.direct_users.append(user)
+    # Group access (same server)
+    group = Group(name="grp_temp")
+    group.users.append(user)
+    group.servers.append(server)
+    db_session.add_all([user, group])
+    db_session.commit()
+
+    # Verify user in pull (via both paths)
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    assert len(resp.get_json()["users"]) == 1
+
+    # Remove user from group
+    group.users.remove(user)
+    db_session.commit()
+
+    # Direct access must persist
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    data = resp.get_json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "grptest_user"
+
+
+def test_removing_server_from_group_keeps_direct_users(client, db_session):
+    """Server removed from group retains directly assigned users."""
+    resp = client.post(
+        "/api/register",
+        json={"hostname": "web-srv-rm", "ip_address": "10.0.0.31"},
+    )
+    token = resp.get_json()["agent_token"]
+    server = Server.query.filter_by(agent_token=token).first()
+    server.status = "approved"
+
+    user = User(username="srvtest_user", ssh_public_keys="ssh-ed25519 SRVKEY")
+    # Direct access
+    server.direct_users.append(user)
+    # Also in group
+    group = Group(name="grp_to_detach")
+    group.users.append(user)
+    group.servers.append(server)
+    db_session.add_all([user, group])
+    db_session.commit()
+
+    # Remove server from group
+    group.servers.remove(server)
+    db_session.commit()
+
+    # Direct access must persist
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    data = resp.get_json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "srvtest_user"
+
+
+def test_discovered_user_keeps_access_after_group_changes(client, db_session):
+    """Discovered user retains direct access even after group is added then removed."""
+    # Register with existing user (creates direct link)
+    resp = client.post(
+        "/api/register",
+        json={
+            "hostname": "web-disc-grp",
+            "ip_address": "10.0.0.32",
+            "existing_users": [
+                {"username": "disc_user", "ssh_keys": ["ssh-rsa DISC1"], "shell": "/bin/bash"},
+            ],
+        },
+    )
+    token = resp.get_json()["agent_token"]
+    server = Server.query.filter_by(agent_token=token).first()
+    server.status = "approved"
+    db_session.commit()
+
+    disc_user = User.query.filter_by(username="disc_user").first()
+
+    # Add server and user to a group
+    group = Group(name="grp_disc_test")
+    group.users.append(disc_user)
+    group.servers.append(server)
+    db_session.add(group)
+    db_session.commit()
+
+    # Pull should show user
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    assert len(resp.get_json()["users"]) == 1
+
+    # Remove user from group
+    group.users.remove(disc_user)
+    db_session.commit()
+
+    # Direct (discovered) access must remain
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    data = resp.get_json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "disc_user"
+    assert "ssh-rsa DISC1" in data["users"][0]["ssh_keys"]
+
+    # Even remove server from group entirely
+    group.servers.remove(server)
+    db_session.commit()
+
+    # Still has access via direct link
+    resp = client.get("/api/pull", headers={"Authorization": f"Bearer {token}"})
+    data = resp.get_json()
+    assert len(data["users"]) == 1
+    assert data["users"][0]["username"] == "disc_user"

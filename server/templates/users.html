@@ -2,6 +2,15 @@
 {% block title %}Users — SSHADmin{% endblock %}
 {% block page_title %}Users{% endblock %}
 
+{% macro sort_link(col, label) %}
+{% set new_order = 'asc' if current_sort == col and current_order == 'desc' else 'desc' %}
+{% set arrow = '↑' if current_sort == col and current_order == 'asc' else ('↓' if current_sort == col else '') %}
+<a href="?sort={{ col }}&order={{ new_order }}{% if current_source %}&source={{ current_source }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}"
+   class="inline-flex items-center gap-1 hover:text-gray-900 {{ 'text-gray-900' if current_sort == col else '' }}">
+    {{ label }} <span class="text-xs">{{ arrow }}</span>
+</a>
+{% endmacro %}
+
 {% block content %}
 <div class="flex items-center justify-between mb-6">
     <div></div>
@@ -15,12 +24,39 @@
 </div>
 
 <div class="bg-white rounded-xl border border-gray-200">
+    <!-- Filters -->
+    <div class="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center gap-4">
+        <h2 class="text-sm font-semibold text-gray-900 mr-auto">All Users ({{ users|length }})</h2>
+
+        <!-- Source filter -->
+        <div class="flex items-center gap-1.5">
+            <span class="text-xs text-gray-500">Source:</span>
+            <a href="?sort={{ current_sort }}&order={{ current_order }}{% if current_status %}&status={{ current_status }}{% endif %}"
+               class="px-2 py-1 rounded text-xs font-medium {{ 'bg-gray-900 text-white' if not current_source else 'bg-gray-100 text-gray-600 hover:bg-gray-200' }}">All</a>
+            {% for src in ['manual', 'discovered'] %}
+            <a href="?sort={{ current_sort }}&order={{ current_order }}&source={{ src }}{% if current_status %}&status={{ current_status }}{% endif %}"
+               class="px-2 py-1 rounded text-xs font-medium {{ 'bg-gray-900 text-white' if current_source == src else 'bg-gray-100 text-gray-600 hover:bg-gray-200' }}">{{ src }}</a>
+            {% endfor %}
+        </div>
+
+        <!-- Status filter -->
+        <div class="flex items-center gap-1.5">
+            <span class="text-xs text-gray-500">Status:</span>
+            <a href="?sort={{ current_sort }}&order={{ current_order }}{% if current_source %}&source={{ current_source }}{% endif %}"
+               class="px-2 py-1 rounded text-xs font-medium {{ 'bg-gray-900 text-white' if not current_status else 'bg-gray-100 text-gray-600 hover:bg-gray-200' }}">All</a>
+            {% for st in ['active', 'blocked', 'sudo'] %}
+            <a href="?sort={{ current_sort }}&order={{ current_order }}&status={{ st }}{% if current_source %}&source={{ current_source }}{% endif %}"
+               class="px-2 py-1 rounded text-xs font-medium {{ 'bg-gray-900 text-white' if current_status == st else 'bg-gray-100 text-gray-600 hover:bg-gray-200' }}">{{ st }}</a>
+            {% endfor %}
+        </div>
+    </div>
+
     <div class="overflow-x-auto">
         <table class="w-full">
             <thead>
                 <tr class="border-b border-gray-100">
-                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Username</th>
-                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Source</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">{{ sort_link('username', 'Username') }}</th>
+                    <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">{{ sort_link('source', 'Source') }}</th>
                     <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Auth</th>
                     <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Sudo</th>
                     <th class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>

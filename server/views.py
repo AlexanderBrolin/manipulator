@@ -51,8 +51,42 @@ def dashboard():
 @views_bp.route("/servers")
 @login_required
 def servers():
-    all_servers = Server.query.order_by(Server.registered_at.desc()).all()
-    return render_template("servers.html", servers=all_servers)
+    sort = request.args.get("sort", "registered")
+    order = request.args.get("order", "desc")
+    group_id = request.args.get("group", type=int)
+    status_filter = request.args.get("status", "")
+
+    query = Server.query
+
+    # Filter by group
+    if group_id:
+        query = query.filter(Server.groups.any(Group.id == group_id))
+
+    # Filter by status
+    if status_filter in ("pending", "approved", "rejected"):
+        query = query.filter_by(status=status_filter)
+
+    # Sorting
+    sort_map = {
+        "hostname": Server.hostname,
+        "ip": Server.ip_address,
+        "status": Server.status,
+        "registered": Server.registered_at,
+        "heartbeat": Server.last_heartbeat,
+    }
+    sort_col = sort_map.get(sort, Server.registered_at)
+    query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
+
+    all_groups = Group.query.order_by(Group.name).all()
+    return render_template(
+        "servers.html",
+        servers=query.all(),
+        all_groups=all_groups,
+        current_sort=sort,
+        current_order=order,
+        current_group=group_id,
+        current_status=status_filter,
+    )
 
 
 @views_bp.route("/servers/<int:id>")
@@ -128,8 +162,38 @@ def server_action(id):
 @views_bp.route("/users")
 @login_required
 def users():
-    all_users = User.query.order_by(User.username).all()
-    return render_template("users.html", users=all_users)
+    sort = request.args.get("sort", "username")
+    order = request.args.get("order", "asc")
+    source_filter = request.args.get("source", "")
+    status_filter = request.args.get("status", "")
+
+    query = User.query
+
+    if source_filter in ("manual", "discovered"):
+        query = query.filter_by(source=source_filter)
+    if status_filter == "blocked":
+        query = query.filter_by(is_blocked=True)
+    elif status_filter == "active":
+        query = query.filter_by(is_blocked=False)
+    if status_filter == "sudo":
+        query = query.filter_by(is_sudo=True)
+
+    sort_map = {
+        "username": User.username,
+        "source": User.source,
+        "created": User.created_at,
+    }
+    sort_col = sort_map.get(sort, User.username)
+    query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
+
+    return render_template(
+        "users.html",
+        users=query.all(),
+        current_sort=sort,
+        current_order=order,
+        current_source=source_filter,
+        current_status=status_filter,
+    )
 
 
 @views_bp.route("/users/edit", methods=["GET", "POST"])

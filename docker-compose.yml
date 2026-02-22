@@ -1,5 +1,7 @@
+version: "3.8"
+
 services:
-  control-center:
+  controlcenter:
     build: .
     ports:
       - "5000:5000"

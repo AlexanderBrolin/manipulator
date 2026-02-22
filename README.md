@@ -65,13 +65,13 @@ docker-compose up -d
 Создайте администратора:
 
 ```bash
-docker-compose exec control-center flask --app server.app:create_app auth create-admin admin
+docker-compose exec controlcenter flask --app server.app:create_app auth create-admin admin
 ```
 
 Или используйте seed-скрипт (создаст `admin` / `admin`):
 
 ```bash
-docker-compose exec control-center python server/seed.py
+docker-compose exec controlcenter python server/seed.py
 ```
 
 Админка доступна по адресу: **http://your-server:5000/admin/**

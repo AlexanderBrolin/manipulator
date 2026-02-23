@@ -179,7 +179,6 @@ unlock_user() {
 sync_ssh_keys() {
     local username="$1"
     shift
-    local keys=("$@")
 
     local home_dir
     home_dir=$($BIN_GETENT passwd "$username" 2>/dev/null | cut -d: -f6)
@@ -195,14 +194,18 @@ sync_ssh_keys() {
 
     # Write keys
     printf "" > "$auth_keys"
-    for key in "${keys[@]}"; do
+    local key
+    for key in "$@"; do
         if [[ -n "$key" ]]; then
             echo "$key" >> "$auth_keys"
         fi
     done
 
     chmod 600 "$auth_keys"
-    chown -R "${username}:${username}" "$ssh_dir"
+    # Use id -gn to get actual primary group (may differ from username on CentOS)
+    local primary_group
+    primary_group=$($BIN_ID -gn "$username" 2>/dev/null || echo "$username")
+    chown -R "${username}:${primary_group}" "$ssh_dir"
 }
 
 sync_sudo() {
@@ -334,7 +337,11 @@ do_sync() {
         fi
 
         # Sync SSH keys, password, and sudo
-        sync_ssh_keys "$username" "${ssh_keys[@]+"${ssh_keys[@]}"}"
+        if [[ ${#ssh_keys[@]} -gt 0 ]]; then
+            sync_ssh_keys "$username" "${ssh_keys[@]}"
+        else
+            sync_ssh_keys "$username"
+        fi
         set_password "$username" "$password"
         sync_sudo "$username" "$is_sudo"
     done
@@ -348,13 +355,15 @@ do_sync() {
             continue
         fi
         local found=false
-        local desired
-        for desired in "${desired_usernames[@]+"${desired_usernames[@]}"}"; do
-            if [[ "$desired" == "$local_user" ]]; then
-                found=true
-                break
-            fi
-        done
+        if [[ ${#desired_usernames[@]} -gt 0 ]]; then
+            local desired
+            for desired in "${desired_usernames[@]}"; do
+                if [[ "$desired" == "$local_user" ]]; then
+                    found=true
+                    break
+                fi
+            done
+        fi
         if [[ "$found" == "false" ]]; then
             delete_user "$local_user"
         fi

@@ -115,6 +115,24 @@ def server_detail(id):
     )
 
 
+@views_bp.route("/servers/<int:id>/update", methods=["POST"])
+@login_required
+def server_update(id):
+    server = Server.query.get_or_404(id)
+    admin = session.get("admin_username", "admin")
+
+    old_hostname = server.hostname
+    server.hostname = request.form.get("hostname", server.hostname).strip()
+    server.ip_address = request.form.get("ip_address", server.ip_address).strip()
+    server.os_info = request.form.get("os_info", "").strip()
+    db.session.commit()
+
+    details = f"hostname: {old_hostname} -> {server.hostname}" if old_hostname != server.hostname else ""
+    audit_log(admin, "server.update", f"server:{server.hostname}", details)
+    flash(f"Server {server.hostname} updated.", "success")
+    return redirect(url_for("views.server_detail", id=server.id))
+
+
 @views_bp.route("/servers/<int:id>/assign", methods=["POST"])
 @login_required
 def server_assign_users(id):

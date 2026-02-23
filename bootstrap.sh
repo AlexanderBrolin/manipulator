@@ -267,6 +267,10 @@ register_server() {
 
     local hostname
     hostname=$(hostname -f 2>/dev/null || hostname)
+    # hostname -f can return "localhost" if /etc/hosts has no FQDN entry
+    if [[ "$hostname" == "localhost" ]] || [[ -z "$hostname" ]]; then
+        hostname=$(hostname)
+    fi
     local ip
     ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "unknown")
     local existing_users

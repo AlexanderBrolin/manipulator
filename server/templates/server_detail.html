@@ -6,47 +6,58 @@
 <div class="space-y-6">
     <!-- Server Info -->
     <div class="bg-white rounded-xl border border-gray-200 p-6">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Hostname</div>
-                <div class="text-sm font-medium text-gray-900">{{ server.hostname }}</div>
-            </div>
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">IP Address</div>
-                <div class="text-sm font-mono text-gray-900">{{ server.ip_address }}</div>
-            </div>
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">OS</div>
-                <div class="text-sm text-gray-900">{{ server.os_info or '—' }}</div>
-            </div>
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Status</div>
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                    {{ 'bg-green-100 text-green-700' if server.status == 'approved' else '' }}
-                    {{ 'bg-yellow-100 text-yellow-700' if server.status == 'pending' else '' }}
-                    {{ 'bg-red-100 text-red-700' if server.status == 'rejected' else '' }}">
-                    {{ server.status }}
-                </span>
-            </div>
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Last Heartbeat</div>
-                <div class="text-sm text-gray-900">{{ server.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if server.last_heartbeat else 'never' }}</div>
-            </div>
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Registered</div>
-                <div class="text-sm text-gray-900">{{ server.registered_at.strftime('%Y-%m-%d %H:%M:%S') if server.registered_at else '' }}</div>
-            </div>
-            <div>
-                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Groups</div>
-                <div class="flex flex-wrap gap-1">
-                    {% for g in server.groups %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-xs text-gray-600">{{ g.name }}</span>
-                    {% else %}
-                    <span class="text-sm text-gray-400">none</span>
-                    {% endfor %}
+        <form method="POST" action="{{ url_for('views.server_update', id=server.id) }}">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">Hostname</label>
+                    <input type="text" name="hostname" value="{{ server.hostname }}" required
+                           class="w-full px-2.5 py-1.5 text-sm font-medium text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">IP Address</label>
+                    <input type="text" name="ip_address" value="{{ server.ip_address }}"
+                           class="w-full px-2.5 py-1.5 text-sm font-mono text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1 block">OS</label>
+                    <input type="text" name="os_info" value="{{ server.os_info or '' }}"
+                           class="w-full px-2.5 py-1.5 text-sm text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Status</div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                        {{ 'bg-green-100 text-green-700' if server.status == 'approved' else '' }}
+                        {{ 'bg-yellow-100 text-yellow-700' if server.status == 'pending' else '' }}
+                        {{ 'bg-red-100 text-red-700' if server.status == 'rejected' else '' }}">
+                        {{ server.status }}
+                    </span>
+                </div>
+                <div>
+                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Last Heartbeat</div>
+                    <div class="text-sm text-gray-900">{{ server.last_heartbeat.strftime('%Y-%m-%d %H:%M:%S') if server.last_heartbeat else 'never' }}</div>
+                </div>
+                <div>
+                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Registered</div>
+                    <div class="text-sm text-gray-900">{{ server.registered_at.strftime('%Y-%m-%d %H:%M:%S') if server.registered_at else '' }}</div>
+                </div>
+                <div>
+                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Groups</div>
+                    <div class="flex flex-wrap gap-1">
+                        {% for g in server.groups %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-xs text-gray-600">{{ g.name }}</span>
+                        {% else %}
+                        <span class="text-sm text-gray-400">none</span>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
-        </div>
+            <div class="mt-4">
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    Save Changes
+                </button>
+            </div>
+        </form>
 
         <!-- Server Actions -->
         <div class="flex items-center gap-2 mt-6 pt-4 border-t border-gray-200">
